@@ -14,7 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Yup from "yup";
 import { Formik } from "formik";
 
-export default function AddProduct({ isVisible, onClose, selectedProduct }) {
+export default function AddProduct({ isVisible, onClose, selectedProduct, mode }) {
 
   const initialValues = selectedProduct ? {
       name: selectedProduct.name || "",
@@ -73,7 +73,7 @@ export default function AddProduct({ isVisible, onClose, selectedProduct }) {
               </TouchableWithoutFeedback>
             </View>
 
-            <Text className="text-2xl font-bold text-black w-full p-5" 
+            <Text className="text-2xl font-bold text-white w-full p-5" 
                 style={{
                     backgroundColor: "#1E88E5",
                     borderBottomLeftRadius: 20,
@@ -103,7 +103,7 @@ export default function AddProduct({ isVisible, onClose, selectedProduct }) {
                       onChangeText={handleChange("name")}
                       onBlur={handleBlur("name")}
                       value={values.name}
-                      readOnly={selectedProduct}
+                      editable={mode === "edit" || mode === "add"}
                     />
                     {errors.name && touched.name && (
                       <Text className="text-red-600 -mt-2 mb-2">{errors.name}</Text>
@@ -117,7 +117,7 @@ export default function AddProduct({ isVisible, onClose, selectedProduct }) {
                       onChangeText={handleChange("stock")}
                       onBlur={handleBlur("stock")}
                       value={values.stock}
-                      readOnly={selectedProduct}
+                      editable={mode === "edit" || mode === "add"}
                     />
                     {errors.stock && touched.stock && (
                       <Text className="text-red-600 -mt-2 mb-2">{errors.stock}</Text>
@@ -131,7 +131,7 @@ export default function AddProduct({ isVisible, onClose, selectedProduct }) {
                       onChangeText={handleChange("minStock")}
                       onBlur={handleBlur("minStock")}
                       value={values.minStock}
-                      readOnly={selectedProduct}
+                      editable={mode === "edit" || mode === "add"}
 
                     />
                     {errors.minStock && touched.minStock && (
@@ -146,7 +146,7 @@ export default function AddProduct({ isVisible, onClose, selectedProduct }) {
                       onChangeText={handleChange("unitWeight")}
                       onBlur={handleBlur("unitWeight")}
                       value={values.unitWeight}
-                      readOnly={selectedProduct}
+                      editable={mode === "edit" || mode === "add"}
                     />
                     {errors.unitWeight && touched.unitWeight && (
                       <Text className="text-red-600 -mt-2 mb-2">{errors.unitWeight}</Text>
@@ -160,7 +160,7 @@ export default function AddProduct({ isVisible, onClose, selectedProduct }) {
                       onChangeText={handleChange("currenWeight")}
                       onBlur={handleBlur("currenWeight")}
                       value={values.currenWeight}
-                      readOnly={selectedProduct}
+                      editable={mode === "edit" || mode === "add"}
                     />
                     {errors.currenWeight && touched.currenWeight && (
                       <Text className="text-red-600 -mt-2 mb-2">{errors.currenWeight}</Text>
@@ -173,7 +173,7 @@ export default function AddProduct({ isVisible, onClose, selectedProduct }) {
                       onChangeText={handleChange("maxTemp")}
                       onBlur={handleBlur("maxTemp")}
                       value={values.maxTemp}
-                      readOnly={selectedProduct}
+                      editable={mode === "edit" || mode === "add"}
                     />
                     {errors.maxTemp && touched.maxTemp && (
                       <Text className="text-red-600 -mt-2 mb-2">{errors.maxTemp}</Text>
@@ -186,7 +186,7 @@ export default function AddProduct({ isVisible, onClose, selectedProduct }) {
                       onChangeText={handleChange("maxHumidity")}
                       onBlur={handleBlur("maxHumidity")}
                       value={values.maxHumidity}
-                      readOnly={selectedProduct}
+                      editable={mode === "edit" || mode === "add"}
                     />
                     {errors.maxHumidity && touched.maxHumidity && (
                       <Text className="text-red-600 -mt-2 mb-2">{errors.maxHumidity}</Text>
@@ -199,7 +199,7 @@ export default function AddProduct({ isVisible, onClose, selectedProduct }) {
                       onChangeText={handleChange("container")}
                       onBlur={handleBlur("container")}
                       value={values.container}
-                      readOnly={selectedProduct}
+                      editable={mode === "edit" || mode === "add"}
                     />
 
                     <Text className={labelStyle}>Foto</Text>
@@ -207,7 +207,7 @@ export default function AddProduct({ isVisible, onClose, selectedProduct }) {
                       source={require("../assets/icon.png")}
                       className="w-32 h-32 mt-2 self-start"
                       resizeMode="contain"
-                      readOnly={selectedProduct}
+                      readOnly={mode != "edit"}
                     />
 
                     {!selectedProduct && (
@@ -217,6 +217,17 @@ export default function AddProduct({ isVisible, onClose, selectedProduct }) {
                       >
                         <Text className="text-white text-center font-bold text-lg">
                           Agregar
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {mode === "edit" && (
+                      <TouchableOpacity 
+                        className="mt-6 bg-[#1E88E5] p-4 rounded-xl"
+                        onPress={handleSubmit}
+                      >
+                        <Text className="text-white text-center font-bold text-lg">
+                          Actualizar
                         </Text>
                       </TouchableOpacity>
                     )}
