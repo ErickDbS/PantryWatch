@@ -8,49 +8,119 @@ import {
   Image, 
   ScrollView, 
   KeyboardAvoidingView, 
-  Platform 
+  Platform, 
+  ActivityIndicator
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Yup from "yup";
 import { Formik } from "formik";
+import { useState } from "react";
+import axios from "axios";
+import { toast } from "../utils/toast";
 
-export default function AddProduct({ isVisible, onClose, selectedProduct, mode }) {
+
+export default function AddProduct({ isVisible, onClose, selectedProduct, mode, getProducts }) {
+  const [isLoading, setIsLoading] = useState(false)
 
   const initialValues = selectedProduct ? {
+      id: selectedProduct.productId || "",
       name: selectedProduct.name || "",
-      stock: selectedProduct.stock?.toString() || "",
+      currentStock: selectedProduct.currentStock?.toString() || "",
       minStock: selectedProduct.minStock?.toString() || "",
       unitWeight: selectedProduct.unitWeight?.toString() || "",
-      currenWeight: selectedProduct.currenWeight?.toString() || "",
+      currentWeight: selectedProduct.currentWeight?.toString() || "",
       maxTemp: selectedProduct.maxTemp?.toString() || "",
       maxHumidity: selectedProduct.maxHumidity?.toString() || "",
-      container: selectedProduct.container?.toString() || ""
+      container: selectedProduct.container?.toString() || null,
+      containerId: selectedProduct.containerId?.toString() || null
   } : {
       name: "",
-      stock: "",
+      currentStock: "",
       minStock: "",
       unitWeight: "",
-      currenWeight: "",
+      currentWeight: "",
       maxTemp: "",
       maxHumidity: "",
-      container: ""
+      container: "",
+      containerId: ""
   };
 
   const productSchema = Yup.object().shape({
       name: Yup.string().required("Nombre del producto es requerido"),
-      stock: Yup.number().required("Stock del producto es requerido"),
+      currentStock: Yup.number().required("Stock del producto es requerido"),
       minStock: Yup.number().required("Stock mínimo es requerido"),
       unitWeight: Yup.number().required("Peso unitario es requerido"),
-      currenWeight: Yup.number().required("Peso actual es requerido"),
+      currentWeight: Yup.number().required("Peso actual es requerido"),
       maxTemp: Yup.string().required("Temperatura máxima es requerida"),
       maxHumidity: Yup.string().required("Humedad máxima es requerida"),
-      conteiner: Yup.string()
+      container: Yup.string()
   });
 
   const inputStyle =
     "rounded-xl border border-gray-300 w-full p-3 mt-1 mb-3 bg-gray-100";
 
   const labelStyle = "font-semibold text-black mt-1";
+
+  const createProduct = async (values) => {
+    setIsLoading(true)
+
+    try {
+      const dataToSend = {
+            nombre: values.name,
+            contenedorId: values.containerId,
+            pesoUnitario: values.unitWeight,
+            pesoActual: values.currentWeight,
+            stockMinimo: values.minStock,
+            stockActual: values.currentStock,
+            tempMax: values.maxTemp,
+            humedadMax: values.maxHumidity,
+            contenedor: values.container
+          };
+
+      await axios.post(`${process.env.API_LOCAL}/productos`,
+        dataToSend
+      )
+      getProducts()
+      onClose()
+      toast.success("Producto creado correctamente")
+    } catch (error) {
+      toast.error("Error al crear el producto")
+      console.error("Error al crear el producto: ", error.response)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const updateProduct = async (values) => {
+    setIsLoading(true)
+    try {
+      const dataToSend = {
+            nombre: values.name,
+            contenedorId: values.containerId,
+            pesoUnitario: values.unitWeight,
+            pesoActual: values.currentWeight,
+            stockMinimo: values.minStock,
+            stockActual: values.currentStock,
+            tempMax: values.maxTemp,
+            humedadMax: values.maxHumidity,
+            contenedor: values.container
+          };
+        await axios.put(
+        `${process.env.API_LOCAL}/productos/${values.id}`,
+        dataToSend
+        );
+
+        getProducts()
+        onClose()
+        toast.success("Producto editado correctamente")
+    } catch (error) {
+        onClose()
+        toast.error("Error al intentar editar el producto")
+        console.error("Error al actualizar el producto: ", error.response)
+    } finally {
+        setIsLoading(false)
+    }
+  }
 
   return (
     <Modal 
@@ -91,7 +161,13 @@ export default function AddProduct({ isVisible, onClose, selectedProduct, mode }
               <Formik
                 initialValues={initialValues}
                 validationSchema={productSchema}
-                onSubmit={(values) => console.log("Producto enviado: ", values)}
+                onSubmit={(values) => {
+                  if (mode === "edit"){
+                    updateProduct(values)
+                  } else {
+                    createProduct(values)
+                  }
+                }}
               >
                 {({ handleChange, handleBlur, handleSubmit, values, errors, touched }) => (
                   <View className="w-full">
@@ -109,18 +185,18 @@ export default function AddProduct({ isVisible, onClose, selectedProduct, mode }
                       <Text className="text-red-600 -mt-2 mb-2">{errors.name}</Text>
                     )}
 
-                    <Text className={labelStyle}>Stock</Text>
+                    <Text className={labelStyle}>Stock Actual</Text>
                     <TextInput
                       className={inputStyle}
                       placeholder="10"
                       keyboardType="numeric"
-                      onChangeText={handleChange("stock")}
-                      onBlur={handleBlur("stock")}
-                      value={values.stock}
+                      onChangeText={handleChange("currentStock")}
+                      onBlur={handleBlur("currentStock")}
+                      value={values.currentStock}
                       editable={mode === "edit" || mode === "add"}
                     />
-                    {errors.stock && touched.stock && (
-                      <Text className="text-red-600 -mt-2 mb-2">{errors.stock}</Text>
+                    {errors.currentStock && touched.currentStock && (
+                      <Text className="text-red-600 -mt-2 mb-2">{errors.currentStock}</Text>
                     )}
 
                     <Text className={labelStyle}>Stock mínimo</Text>
@@ -157,13 +233,13 @@ export default function AddProduct({ isVisible, onClose, selectedProduct, mode }
                       className={inputStyle}
                       keyboardType="numeric"
                       placeholder="10"
-                      onChangeText={handleChange("currenWeight")}
-                      onBlur={handleBlur("currenWeight")}
-                      value={values.currenWeight}
+                      onChangeText={handleChange("currentWeight")}
+                      onBlur={handleBlur("currentWeight")}
+                      value={values.currentWeight}
                       editable={mode === "edit" || mode === "add"}
                     />
-                    {errors.currenWeight && touched.currenWeight && (
-                      <Text className="text-red-600 -mt-2 mb-2">{errors.currenWeight}</Text>
+                    {errors.currentWeight && touched.currentWeight && (
+                      <Text className="text-red-600 -mt-2 mb-2">{errors.currentWeight}</Text>
                     )}
 
                     <Text className={labelStyle}>Máxima temperatura</Text>
@@ -202,22 +278,20 @@ export default function AddProduct({ isVisible, onClose, selectedProduct, mode }
                       editable={mode === "edit" || mode === "add"}
                     />
 
-                    <Text className={labelStyle}>Foto</Text>
-                    <Image
-                      source={require("../assets/icon.png")}
-                      className="w-32 h-32 mt-2 self-start"
-                      resizeMode="contain"
-                      readOnly={mode != "edit"}
-                    />
-
                     {!selectedProduct && (
                       <TouchableOpacity 
                         className="mt-6 bg-[#1E88E5] p-4 rounded-xl"
                         onPress={handleSubmit}
+                        disabled={isLoading}
                       >
-                        <Text className="text-white text-center font-bold text-lg">
-                          Agregar
-                        </Text>
+                        {isLoading ? (
+                          <ActivityIndicator color="#FFFFFF"/>
+                        ) : (
+                          <Text className="text-white text-center font-bold text-lg">
+                            Agregar
+                          </Text>
+                        )}
+
                       </TouchableOpacity>
                     )}
 
@@ -225,10 +299,16 @@ export default function AddProduct({ isVisible, onClose, selectedProduct, mode }
                       <TouchableOpacity 
                         className="mt-6 bg-[#1E88E5] p-4 rounded-xl"
                         onPress={handleSubmit}
+                        disabled={isLoading}
                       >
-                        <Text className="text-white text-center font-bold text-lg">
-                          Actualizar
-                        </Text>
+                        {isLoading ? (
+                          <ActivityIndicator color="#FFFFFF"/>
+                        ) : (
+                          <Text className="text-white text-center font-bold text-lg">
+                            Actualizar
+                          </Text>
+                        )}
+
                       </TouchableOpacity>
                     )}
                   </View>

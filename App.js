@@ -1,4 +1,4 @@
-import { Text, View, FlatList, TouchableOpacity } from 'react-native';
+import { Text, View, FlatList, TouchableOpacity, Animated } from 'react-native';
 import "./global.css"
 import { useEffect, useState } from 'react';
 import AddProduct from './components/addProduct';
@@ -9,6 +9,11 @@ import { Swipeable } from "react-native-gesture-handler";
 import SegmentedControl from "@react-native-segmented-control/segmented-control";
 import AddContainer from './components/addContainer';
 import axios from 'axios';
+import FlashMessage from "react-native-flash-message";
+import { toast } from "./utils/toast"
+import { useRef } from "react";
+import { socket } from './socket/socket';
+import GeminiResponse from './components/geminiResponse';
 
 
 export default function App() {
@@ -19,24 +24,35 @@ export default function App() {
   const [selectedContainer, setSelectedContainer] = useState(null)
   const [products, setProducts] = useState([])
   const [containers, setContainers] = useState([])
+  const [socketData, setSocketData] = useState([])
+  const [isIaModalVisible, setIsIaModalVisible] = useState(false)
+  const [geminiResponse, setGeminiResponse] = useState(null)
+  const [isLoading, setIsLoading] = useState(false)
 
-  const dataList = [
-    { id: 1, name: "Cafe bien rico", stock: 10, minStock: "1", unitWeight: "100gr", currenWeight: "50gr", maxTemp: "50C", maxHumidity: "30", container: "si" },
-    { id: 2, name: "Condones Tia rosa", stock: 5, minStock: "1", unitWeight: "100gr", currenWeight: "50gr", maxTemp: "50C", maxHumidity: "30", container: "si" },
-    { id: 3, name: "Tortilla de maiz", stock: 20, minStock: "1", unitWeight: "100gr", currenWeight: "50gr", maxTemp: "50C", maxHumidity: "30", container: "si"},
-    { id: 4, name: "Cacahuates", stock: 5, minStock: "1", unitWeight: "100gr", currenWeight: "50gr", maxTemp: "50C", maxHumidity: "30", container: "si"},
-    { id: 5, name: "Chicharrones", stock: 1, minStock: "2", unitWeight: "100gr", currenWeight: "50gr", maxTemp: "50C", maxHumidity: "30", container: "si"},
-  ]
+  const [isSpeedDialOpen, setIsSpeedDialOpen] = useState(false);
+  const animation = useRef(new Animated.Value(0)).current;
 
-  // const dataContainersList = [
-  //   { id: 1, name: "Contenedor de cristal", weight: "100gr", grCapacity: "500gr" },
-  //   { id: 2, name: "Contenedor de madera", weight: "500gr", grCapacity: "500gr" },
-  //   { id: 3, name: "Contenedor de fierro viejo", weight: "10gr", grCapacity: "500gr" },
-  //   { id: 4, name: "Contenedor de plastico", weight: "5gr", grCapacity: "500gr" },
-  //   { id: 5, name: "Contenedor de pasas", weight: "400gr", grCapacity: "500gr" },
-  // ]
+  const toggleSpeedDial = () => {
+    Animated.spring(animation, {
+      toValue: isSpeedDialOpen ? 0 : 1,
+      useNativeDriver: true,
+    }).start();
+
+    setIsSpeedDialOpen(!isSpeedDialOpen);
+  };
 
   const insets = useSafeAreaInsets();
+
+  const openIaModal = async () => {
+    setGeminiResponse(null)
+    setIsLoading(true)
+    setIsIaModalVisible(true)
+    await getIaRecipe()
+  }
+
+  const closeIaModal = () => {
+    setIsIaModalVisible(false)
+  }
 
   const openAddProduct = () => {
     setSelectedProduct(null)
@@ -79,12 +95,18 @@ export default function App() {
   }
 
   const closeAddContainer = () => {
+    setSocketData(null)
     setIsModalVisible(false)
   }
 
   const getContainers = async () => {
     try {
-      const response = await axios.get(`${process.env.API_URL}/contenedor`)
+      const response = await axios.get(`${process.env.API_LOCAL}/contenedor`)
+    if (!response || !response.data || !Array.isArray(response.data.data)) {
+      setContainers([]);
+      return;
+    }
+
 
       const list = response.data.data.map(item => ({
         containerId: item.id,
@@ -95,24 +117,112 @@ export default function App() {
       }))
 
       setContainers(list)
-      console.log("Contenedores mapeados: ", containers)
     } catch (error) {
+        const status = error.response?.status;
+      if (status === 404) {
+        setContainers([]);
+        return;
+      }
+
       console.error("Error obteniendo los contenedores: ", error)
+      toast.error("No se pudieron obtener los contenedores")
+
     }
 
   }
 
+  const getProducts = async () => {
+    try {
+      const response = await axios.get(`${process.env.API_LOCAL}/productos`)
+      if(!response || !response.data || !Array.isArray(response.data.data)){
+        setProducts([])
+        return
+      }
+
+      const list = response.data.data.map((item) => ({
+        productId: item.id_producto,
+        name: item.nombre,
+        containerId: item.contenedor_id,
+        unitWeight: item.peso_unitario,
+        currentWeight: item.peso_actual,
+        minStock: item.stock_minimo,
+        currentStock: item.stock_actual,
+        maxTemp: item.temp_max,
+        maxHumidity: item.humedad_max,
+        container: item.contenedor
+      }))
+
+      setProducts(list)
+    } catch (error) {
+      const status = error.response?.status
+      if (status === 404){
+        setProducts([])
+        return
+      }
+
+      toast.error("Error al obtener los productos")
+      console.error("Erro al obtener los productos: ", error)
+    }
+  }
+
+  const getIaRecipe = async () => {
+    try {
+      const response = await axios.get(`${process.env.API_LOCAL}/contenedor/chef`)
+
+      setGeminiResponse(response.data.receta)
+
+    } catch (error) {
+      console.error("Error generando la receta: ", error.response)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const deleteProducts = async (id) => {
+    try {
+      await axios.delete(`${process.env.API_LOCAL}/productos/${id}`)
+      toast.success("Producto borrado correctamente")
+      getProducts()
+    } catch (error) {
+      toast.error("Error al intentar eliminar un producto")
+      console.error("Error al eliminar un producto: ", error.response)
+    }
+  }
+
   const deleteContainer = async (id) => {
     try {
-      const response = await axios.delete(`${process.env.API_URL}/contenedor/${id}`)
-      console.log("Contenedor eliminado: ", response)
+      await axios.delete(`${process.env.API_LOCAL}/contenedor/${id}`)
+      toast.success("Recipiente eliminado correctamente")
+      getContainers()
     } catch (error) {
+      toast.error("Error al intentar eliminar el recipiente")
       console.error("Error al eliminar un contenedor: ", error)
     }
   }
 
   useEffect(() => {
     getContainers()
+    getProducts()
+  }, [])
+
+  useEffect(() => {
+    socket.connect()
+
+    socket.on("connect", () => {
+      console.log("Socket conectado", socket.id)
+    })
+
+    socket.on("nuevo_bote_detectado", (data) => {
+
+      setSegmentIndex(1)
+      setSocketData(data)
+      setIsModalVisible(true)
+    })
+
+    return () => {
+      socket.off("nuevo_bote_detectado")
+      socket.disconnect()
+    }
   }, [])
 
 const renderItemInventory = ({ item }) => {
@@ -120,7 +230,7 @@ const renderItemInventory = ({ item }) => {
   const renderRightActions = () => (
     <TouchableOpacity className="flex-row">
       <TouchableOpacity
-        onPress={deleteContainer(item.containerId)}
+        onPress={() => deleteProducts(item.productId)}
         className="bg-red-600 w-24 justify-center items-center rounded-l-xl"
       >
         <Text className="text-white font-bold">Eliminar</Text>
@@ -144,15 +254,15 @@ const renderItemInventory = ({ item }) => {
       <TouchableOpacity onPress={() => openViewProduct(item)}>
         <View 
           className={`p-4 rounded-xl
-            ${item.stock <= 3 ? 'bg-red-100 border border-red-300' : 'bg-white'}
+            ${item.currentStock <= item.minStock ? 'bg-red-100 border border-red-300' : 'bg-white'}
           `}
           style={{
             borderLeftWidth: 6,
-            borderLeftColor: item.stock <= 3 ? "#E53935" : "#1E88E5",
+            borderLeftColor: item.currentStock <= item.minStock ? "#E53935" : "#1E88E5",
           }}
         >
           <Text className="text-xl font-semibold text-gray-800">{item.name}</Text>
-          <Text className="text-sm text-gray-600">Stock: {item.stock}</Text>
+          <Text className="text-sm text-gray-600">Stock: {item.currentStock}</Text>
 
           {item.stock <= 3 && (
             <Text className="text-red-700 font-medium mt-1">
@@ -170,7 +280,7 @@ const renderItemContainer = ({ item }) => {
   const renderRightActions = () => (
     <TouchableOpacity className="flex-row">
       <TouchableOpacity
-        onPress={() => console.log("Eliminar:", item.name)}
+        onPress={() => deleteContainer(item.containerId)}
         className="bg-red-600 w-24 justify-center items-center rounded-l-xl"
       >
         <Text className="text-white font-bold">Eliminar</Text>
@@ -219,6 +329,7 @@ const renderItemContainer = ({ item }) => {
   return (
     <GestureHandlerRootView className="flex-1">
       <SafeAreaProvider>
+        <FlashMessage position="top"/>
         <SafeAreaView 
           className="flex-1" 
           edges={[ 'left', 'right']} 
@@ -254,14 +365,51 @@ const renderItemContainer = ({ item }) => {
                 </View>
                 <View className="flex-1">
                   <FlatList
-                    data={dataList}
+                    data={products}
                     renderItem={renderItemInventory}
-                    keyExtractor={item => item.id.toString()}
+                    keyExtractor={item => item.productId.toString()}
                     className="p-4"
                     ItemSeparatorComponent={() => <View className="h-4" />} />
                 </View>
+                  <Animated.View
+                    style={{
+                      position: "absolute",
+                      bottom: 25 + 70,
+                      right: 25,
+                      opacity: animation,
+                      transform: [
+                        {
+                          translateY: animation.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [20, 0],
+                          }),
+                        }
+                      ]
+                    }}
+                  >
+                    <TouchableOpacity
+                      onPress={() => {
+                        toggleSpeedDial();
+                        segmentIndex === 0 ? openAddProduct() : openAddContainer();
+                      }}
+                      className="bg-[#1E88E5] p-4 rounded-full mb-3 items-center"
+                    >
+                      <Text className="text-white font-bold">Agregar</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => {
+                        toggleSpeedDial();
+                        openIaModal()
+                      }}
+                      className="bg-[#1E88E5] p-4 rounded-full"
+                    >
+                      <Text className="text-white font-bold">Preguntar a la IA</Text>
+                    </TouchableOpacity>
+                  </Animated.View>
+
                 <TouchableOpacity
-                  onPress={openAddProduct}
+                  onPress={toggleSpeedDial}
                   activeOpacity={0.9}
                   style={{
                     position: "absolute",
@@ -277,27 +425,42 @@ const renderItemContainer = ({ item }) => {
                     shadowOffset: { width: 0, height: 4 }
                   }}
                 >
-                  <Text className="text-white text-lg font-bold">+</Text>
+                  <Text className="text-white text-lg font-bold">{isSpeedDialOpen ? "x" : "+"}</Text>
                 </TouchableOpacity>
                   <AddProduct
                     isVisible={isModalVisible}
                     onClose={closeAddProduct}
                     selectedProduct={selectedProduct}
                     mode={mode} 
+                    getProducts={getProducts}
+                  />
+
+                  <GeminiResponse
+                    isIaModalVisible={isIaModalVisible}
+                    onClose={closeIaModal}
+                    upcomingIaResponse={geminiResponse}
+                    isLoading={isLoading}
                   />
             </>
           ) : (
             <>
               <View className="p-4 mt-2">
                   <Text className="text-black font-bold text-2xl">Recipientes actuales</Text>
+              </View>
+              {containers.length === 0 ? (
+                <View className="flex-1 justify-center items-center">
+                  <Text className="text-2xl text-gray-600/50 font-bold">No hay recipientes</Text>
                 </View>
-              <View className="flex-1">
+              ) : (
                     <FlatList
                       data={containers}
                       renderItem={renderItemContainer}
                       keyExtractor={item => item.containerId.toString()}
                       className="p-4"
-                      ItemSeparatorComponent={() => <View className="h-4" />} />
+                      ItemSeparatorComponent={() => <View className="h-4" />} 
+                      />
+              )}
+              <View className="flex-1">
                 </View>
                 <TouchableOpacity
                     onPress={openAddContainer}
@@ -318,7 +481,7 @@ const renderItemContainer = ({ item }) => {
                   >
                   <Text className="text-white text-lg font-bold">+</Text>
 
-                  </TouchableOpacity>
+                </TouchableOpacity>
 
                   <AddContainer
                     isVisible={isModalVisible}
@@ -326,6 +489,7 @@ const renderItemContainer = ({ item }) => {
                     selectedContainer={selectedContainer}
                     mode={mode} 
                     getContainers={getContainers}
+                    upcomingContainerData={socketData}
                   />
             </>
           )}

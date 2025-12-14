@@ -8,17 +8,24 @@ import {
   Image, 
   ScrollView, 
   KeyboardAvoidingView, 
-  Platform 
+  Platform, 
+  ActivityIndicator
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Yup from "yup";
 import { Formik } from "formik";
 import axios from "axios";
+import { toast } from "../utils/toast";
+import * as ImagePicker from "expo-image-picker";
+import { Alert } from "react-native";
+import { useState } from "react";
 
-export default function AddContainer({ isVisible, onClose, selectedContainer, mode, getContainers }) {
 
+export default function AddContainer({ isVisible, onClose, selectedContainer, mode, getContainers, upcomingContainerData}) {
+
+  const [isLoading, setIsLoading] = useState(false)
   const initialValues = selectedContainer ? {
-      id: selectedContainer.id || "",
+      id: selectedContainer.containerId || "",
       name: selectedContainer.name || "",
       weight: selectedContainer.weight?.toString() || "",
       image: selectedContainer.image || "",
@@ -43,6 +50,7 @@ export default function AddContainer({ isVisible, onClose, selectedContainer, mo
   const labelStyle = "font-semibold text-black mt-1";
 
   const createContainer = async (values) => {
+    setIsLoading(true)
     try {
         const formData = new FormData()
         formData.append("nombre", values.name)
@@ -56,17 +64,22 @@ export default function AddContainer({ isVisible, onClose, selectedContainer, mo
             })
         }
 
-        await axios.post(`${process.env.API_URL}/contenedor`,
+        await axios.post(`${process.env.API_LOCAL}/contenedor`,
             formData
         )
         getContainers()
         onClose()
+        toast.success("Recipiente creado correctamente")
     } catch (error) {
+        toast.error("Error al crear el recipiente")
         console.error("Error al crear el recipiente: ", error)
+    } finally {
+        setIsLoading(false)
     }
   }
 
   const updateContainer = async (values) => {
+    setIsLoading(true)
     try {
         const formData = new FormData()
         formData.append("nombre", values.name)
@@ -79,15 +92,59 @@ export default function AddContainer({ isVisible, onClose, selectedContainer, mo
                 name: "container.jpg"
             })
         }
-        await axios.put(`${process.env.API_URL}/contenedor/${selectedContainer.id}`,
-            formData
-        )
+        await axios.put(
+        `${process.env.API_LOCAL}/contenedor/${values.id}`,
+        formData
+        );
+
         getContainers()
         onClose()
+        toast.success("Recipiente editado correctamente")
     } catch (error) {
-        console.error("Error al actualizar el recipiente: ", error)
+        onClose()
+        toast.error("Error al intentar editar el recipiente")
+        console.error("Error al actualizar el recipiente: ", error.response)
+    } finally {
+        setIsLoading(false)
     }
   }
+
+    const pickImage = async (setImage) => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (permission.status !== "granted") {
+        Alert.alert("Permiso denegado", "Se necesita permiso para usar la galería.");
+        return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 1,
+        allowsEditing: true,
+    });
+
+    if (!result.canceled) {
+        setImage(result.assets[0].uri);
+    }
+    };
+
+    const takePhoto = async (setImage) => {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (permission.status !== "granted") {
+            Alert.alert("Permiso denegado", "Se necesita permiso para usar la cámara.");
+            return;
+        }
+
+        const result = await ImagePicker.launchCameraAsync({
+            quality: 1,
+            allowsEditing: true,
+        });
+
+        if (!result.canceled) {
+            setImage(result.assets[0].uri);
+        }
+    };
+
+
 
   return (
     <Modal 
@@ -126,7 +183,10 @@ export default function AddContainer({ isVisible, onClose, selectedContainer, mo
               showsVerticalScrollIndicator={false}
             >
               <Formik
-                initialValues={initialValues}
+                initialValues={{
+                  ...initialValues,
+                  weight: upcomingContainerData?.peso_detectado !== undefined ? String(upcomingContainerData.peso_detectado) : initialValues.weight
+                }}
                 validationSchema={containerSchema}
                 onSubmit={(values) => {
                     if(mode === "edit"){
@@ -136,7 +196,7 @@ export default function AddContainer({ isVisible, onClose, selectedContainer, mo
                     }
                 }}
               >
-                {({ handleChange, handleBlur, handleSubmit, values, errors, touched }) => (
+                {({ handleChange, handleBlur, handleSubmit, setFieldValue, values, errors, touched }) => (
                   <View className="w-full">
 
                     <Text className={labelStyle}>Nombre</Text>
@@ -182,21 +242,47 @@ export default function AddContainer({ isVisible, onClose, selectedContainer, mo
                     )}
 
                     <Text className={labelStyle}>Foto</Text>
+
+                    <TouchableOpacity
+                    onPress={() => {
+                        if (mode !== "edit" && mode !== "add") return;
+
+                        Alert.alert(
+                        "Seleccionar imagen",
+                        "¿Qué deseas hacer?",
+                        [
+                            { text: "Galería", onPress: () => pickImage((uri) => setFieldValue("image", uri)) },
+                            { text: "Tomar foto", onPress: () => takePhoto((uri) => setFieldValue("image", uri)) },
+                            { text: "Cancelar", style: "cancel" }
+                        ]
+                        );
+                    }}
+                    >
                     <Image
-                      source={{ uri: values.image}}
-                      className="w-32 h-32 mt-2 self-start"
-                      resizeMode="contain"
-                      editable={mode === "edit" || mode === "add"}
+                        source={
+                        values.image
+                            ? { uri: values.image }
+                            : require("../assets/icon.png")
+                        }
+                        className="w-32 h-32 mt-2 self-start rounded-xl bg-gray-200"
+                        resizeMode="cover"
                     />
+                    </TouchableOpacity>
 
                     {!selectedContainer && (
                       <TouchableOpacity 
                         className="mt-6 bg-[#1E88E5] p-4 rounded-xl"
                         onPress={handleSubmit}
+                        disabled={isLoading}
                       >
-                        <Text className="text-white text-center font-bold text-lg">
-                          Agregar
-                        </Text>
+                        {isLoading ? (
+                            <ActivityIndicator color="#FFFFFF"/>
+                        ) : (
+                            <Text className="text-white text-center font-bold text-lg">
+                                Agregar
+                            </Text>
+                        )}
+
                       </TouchableOpacity>
                     )}
 
@@ -204,10 +290,16 @@ export default function AddContainer({ isVisible, onClose, selectedContainer, mo
                       <TouchableOpacity 
                         className="mt-6 bg-[#1E88E5] p-4 rounded-xl"
                         onPress={handleSubmit}
+                        disabled={isLoading}
                       >
-                        <Text className="text-white text-center font-bold text-lg">
-                          Actualizar
-                        </Text>
+                        {isLoading ? (
+                            <ActivityIndicator color="#FFFFFF"/>
+                        ) : (
+                            <Text className="text-white text-center font-bold text-lg">
+                                Actualizar
+                            </Text>
+                        )}
+
                       </TouchableOpacity>
                     )}
                   </View>
